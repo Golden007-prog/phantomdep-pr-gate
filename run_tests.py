@@ -136,6 +136,39 @@ class CorpusTests(unittest.TestCase):
         self.assertIn("LOW-DOWNLOADS", results[0].verdicts)
         self.assertEqual(pd.exit_code_for(results), 0)
 
+    def test_18_requirements_includes_followed(self):
+        added, results = run_pair("18-requirements-includes")
+        self.assertEqual([a.name for a in added], ["flask"])
+        self.assertEqual(added[0].manifest_path, "requirements.txt")
+        self.assertEqual(results[0].verdicts, ["OK"])
+        self.assertEqual(pd.exit_code_for(results), 0)
+
+    def test_19_requirements_include_cycle_safe(self):
+        added, results = run_pair("19-requirements-include-cycle")
+        self.assertEqual([a.name for a in added], ["requests"])
+        self.assertEqual(results[0].verdicts, ["OK"])
+        self.assertEqual(pd.exit_code_for(results), 0)
+
+    def test_20_lockfile_direct_added(self):
+        added, results = run_pair("20-lockfile-direct-added")
+        # lodash enters through the lockfile alone (package.json is
+        # unchanged); the transitive uid entry must NOT be audited.
+        self.assertEqual([a.name for a in added], ["lodash"])
+        self.assertEqual(added[0].manifest_path, "package-lock.json")
+        self.assertEqual(results[0].verdicts, ["OK"])
+        self.assertEqual(pd.exit_code_for(results), 0)
+
+    def test_21_lockfile_typo_blocks(self):
+        added, results = run_pair("21-lockfile-typo-blocks")
+        self.assertEqual([a.name for a in added], ["lodahs"])
+        self.assertIn("SUSPECT-TYPO", results[0].verdicts)
+        self.assertEqual(pd.exit_code_for(results), 1)
+
+    def test_22_lockfile_transitive_only_no_findings(self):
+        added, results = run_pair("22-lockfile-transitive-only")
+        self.assertEqual(added, [])
+        self.assertEqual(results, [])
+
 
 class UnitTests(unittest.TestCase):
     def test_levenshtein(self):
@@ -154,6 +187,67 @@ class UnitTests(unittest.TestCase):
             "requests>=2.31\nflask[async]==3.0; python_version>'3.8'\n"
             "# comment\n-r other.txt\nnumpy\n")
         self.assertEqual(set(deps), {"requests", "flask", "numpy"})
+
+    def test_requirements_includes_with_resolver(self):
+        files = {
+            "deps/base.txt": "flask==3.0.0\n-r more.txt\n",
+            "deps/more.txt": "numpy>=1.26\n",
+        }
+        entries = pd._parse_requirements_entries(
+            "requests>=2.31\n-r deps/base.txt\n",
+            resolver=files.get, _origin="requirements.txt",
+            _seen=frozenset({"requirements.txt"}))
+        self.assertEqual(set(entries), {"requests", "flask", "numpy"})
+
+    def test_requirements_include_cycle_terminates(self):
+        files = {
+            "a.txt": "-r b.txt\nflask==3.0.0\n",
+            "b.txt": "-r a.txt\nrequests>=2.31\n",
+        }
+        entries = pd._parse_requirements_entries(
+            "-r a.txt\n", resolver=files.get,
+            _origin="requirements.txt",
+            _seen=frozenset({"requirements.txt"}))
+        self.assertEqual(set(entries), {"flask", "requests"})
+
+    def test_requirements_include_missing_and_escaping(self):
+        entries = pd._parse_requirements_entries(
+            "-r gone.txt\n-r ../outside.txt\nrequests>=2.31\n",
+            resolver=lambda target: None, _origin="requirements.txt",
+            _seen=frozenset({"requirements.txt"}))
+        self.assertEqual(set(entries), {"requests"})
+
+    def test_parse_package_lock_direct_only(self):
+        text = json.dumps({
+            "name": "x", "lockfileVersion": 3,
+            "packages": {
+                "": {"dependencies": {"lodash": "^4.17.21",
+                                      "@babel/core": "^7.0.0"}},
+                "node_modules/lodash": {"version": "4.17.21"},
+                "node_modules/@babel/core": {"version": "7.24.0"},
+                "node_modules/ms": {"version": "2.1.3"},
+                "node_modules/lodash/node_modules/ms": {
+                    "version": "2.0.0"},
+            }})
+        entries = pd._parse_package_lock_entries(text)
+        self.assertEqual(set(entries), {"lodash", "@babel/core"})
+        self.assertEqual(entries["lodash"].spec, "4.17.21")
+
+    def test_parse_package_lock_v1_not_read(self):
+        text = json.dumps({
+            "name": "x", "lockfileVersion": 1,
+            "dependencies": {"lodash": {"version": "4.17.21"}}})
+        self.assertEqual(pd._parse_package_lock_entries(text), {})
+
+    def test_diff_file_lockfile_lines_ignored(self):
+        diff = (
+            "diff --git a/package-lock.json b/package-lock.json\n"
+            "--- a/package-lock.json\n"
+            "+++ b/package-lock.json\n"
+            "@@ -1,2 +1,3 @@\n"
+            '     "node_modules/ms": {"version": "2.1.3"},\n'
+            '+    "node_modules/lodahs": {"version": "4.17.21"},\n')
+        self.assertEqual(pd.parse_diff_file(diff), [])
 
     def test_parse_pyproject_string_fallback_shapes(self):
         deps = pd.parse_pyproject(

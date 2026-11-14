@@ -25,7 +25,10 @@ token. Nothing below should be read as claiming the core check is new.
   `--head-dir` manifest-snapshot comparison (primary, offline-testable).
 - **Manifests:** `package.json` (`dependencies`, `devDependencies`,
   `peerDependencies`, `optionalDependencies` — sections tracked and shown),
-  `requirements.txt` (`-r` includes warned, not followed), `pyproject.toml`
+  `requirements.txt` (`-r` includes warned, not followed) [correction:
+  includes are followed in dir/ref modes since the unreleased issue-#4
+  change; package-lock.json direct deps are read since the unreleased
+  issue-#2 change], `pyproject.toml`
   (`project.dependencies` + `project.optional-dependencies`, PEP 735
   `dependency-groups`, poetry dependencies; `tomllib` with a
   dependencies-array-scoped fallback for Python < 3.11; invalid TOML is an
@@ -156,7 +159,12 @@ test covers it.
 
 1. More manifests/ecosystems: lockfiles, crates.io, Go modules
    (the pkgguard breadth play — only if the workflow delta proves
-   wanted). [Monorepo recursion: done in v0.2.]
+   wanted). [Monorepo recursion: done in v0.2. package-lock.json
+   (lockfileVersion 2/3, direct deps only, per issue #2's design):
+   done, unreleased — see the README's Manifest coverage. Also done,
+   unreleased: `-r` includes in requirements.txt are followed in the
+   dir/ref modes with cycle protection (issue #4). Remaining here:
+   poetry.lock / Pipfile.lock, crates.io, Go modules.]
 2. pypistats-backed PyPI download counts in `--live` mode. [Done in
    v0.2 — this ladder is kept as the v0.1-era record.]
 3. Org policy mode: configurable thresholds, allow/block lists, SARIF

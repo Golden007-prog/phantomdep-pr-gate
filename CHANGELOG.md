@@ -4,6 +4,27 @@ All notable changes to PhantomDep PR Gate, newest first. Versions are
 the GitHub tags/releases on this repo; consumers pin a version with
 `uses: RakTikoo/phantomdep-pr-gate@v0.2` (or `@v0.1`).
 
+## Unreleased
+
+- **requirements.txt `-r` includes are followed** (issue #4) in the
+  directory and git-ref modes: an included file's requirements count
+  as declared by the including file, resolved relative to it,
+  recursively, with cycle protection and a depth cap. Missing,
+  unreadable, symlinked (git mode) or tree-escaping includes warn and
+  are not followed. `--diff` mode and the plain text parser keep the
+  "not followed" warning (no tree to resolve against).
+- **package-lock.json is read** (issue #2) in the directory and
+  git-ref modes: a dependency entering through a lockfile-only change
+  is audited with identical verdicts and exit policy. Only direct
+  dependencies are read — the set recorded in the lockfile's root
+  `packages[""]` entry — so transitive churn never manufactures
+  findings. lockfileVersion 1 is not read (no reliable
+  direct/transitive split; a note is printed). `--diff` mode does not
+  read lockfiles.
+- Fixtures: five new corpus pairs (18–22) covering includes, include
+  cycles, lockfile direct adds, a lockfile typosquat block, and
+  transitive-only churn; tests 109 → 120.
+
 ## v0.2 — 2026-11-10
 
 - **Monorepo recursion:** manifests (`package.json`,

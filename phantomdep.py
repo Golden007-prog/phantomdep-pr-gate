@@ -72,7 +72,8 @@ MANIFEST_EXCLUDED_DIRS_TOP_LEVEL = {".venv", "venv", "dist", "build",
 MANIFEST_EXCLUDED_DIRS = (MANIFEST_EXCLUDED_DIRS_ANY_DEPTH
                           | MANIFEST_EXCLUDED_DIRS_TOP_LEVEL)
 
-MANIFEST_NAMES = ("package.json", "requirements.txt", "pyproject.toml")
+MANIFEST_NAMES = ("package.json", "requirements.txt", "pyproject.toml",
+                  "package-lock.json")
 COMMENT_MARKER = "<!-- phantomdep-pr-gate -->"
 
 NONREGISTRY_PREFIXES = (
@@ -276,16 +277,62 @@ def parse_package_json(text: str) -> dict[str, str]:
     return {e.name: e.spec for e in _parse_package_json_entries(text).values()}
 
 
-def _parse_requirements_entries(text: str) -> dict[str, ManifestEntry]:
+MAX_INCLUDE_DEPTH = 10
+_INCLUDE_RE = re.compile(r"^(?:-r|--requirement)(?:\s+|=)(\S+)")
+
+
+def _parse_requirements_entries(text: str, resolver=None, _origin: str = "",
+                                _seen=frozenset(), _depth: int = 0
+                                ) -> dict[str, ManifestEntry]:
+    """Parse a requirements file's entries.
+
+    ``-r`` / ``--requirement`` includes are followed when `resolver` is
+    given: resolver(root-relative posix path) -> file text or None.
+    Included files are parsed recursively (their own includes resolve
+    relative to *their* directory), with cycle protection (`_seen`)
+    and a depth cap. Without a resolver (pure-text callers), includes
+    keep the historical behaviour: a warning, not followed.
+    """
     out: dict[str, ManifestEntry] = {}
     for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         line = line.split(" #")[0].strip()
-        if line.startswith("-r") or line.startswith("--requirement"):
-            print(f"warning: requirements include '{line}' is not followed; "
-                  "only that file itself is audited", file=sys.stderr)
+        inc = _INCLUDE_RE.match(line)
+        if inc:
+            target_written = inc.group(1).strip("'\"")
+            if resolver is None:
+                print(f"warning: requirements include '{line}' is not "
+                      "followed; only that file itself is audited",
+                      file=sys.stderr)
+                continue
+            import posixpath
+            base_dir = posixpath.dirname(_origin)
+            target = posixpath.normpath(
+                posixpath.join(base_dir, target_written))
+            if target.startswith("../") or target == ".." \
+                    or posixpath.isabs(target_written):
+                print(f"warning: requirements include '{target_written}' "
+                      f"in {_origin or 'requirements.txt'} points outside "
+                      "the audited tree; not followed", file=sys.stderr)
+                continue
+            if target in _seen or _depth >= MAX_INCLUDE_DEPTH:
+                print(f"warning: requirements include '{target_written}' "
+                      f"in {_origin or 'requirements.txt'} forms a cycle "
+                      "or exceeds the include depth cap; not followed",
+                      file=sys.stderr)
+                continue
+            included_text = resolver(target)
+            if included_text is None:
+                print(f"warning: requirements include '{target_written}' "
+                      f"in {_origin or 'requirements.txt'} could not be "
+                      "read; not followed", file=sys.stderr)
+                continue
+            for key, entry in _parse_requirements_entries(
+                    included_text, resolver, _origin=target,
+                    _seen=_seen | {target}, _depth=_depth + 1).items():
+                out.setdefault(key, entry)
             continue
         if line.startswith("-"):
             continue  # -e, --index-url etc are not plain deps
@@ -299,6 +346,72 @@ def _parse_requirements_entries(text: str) -> dict[str, ManifestEntry]:
 def parse_requirements(text: str) -> dict[str, str]:
     return {_norm_pypi(e.name): e.spec
             for e in _parse_requirements_entries(text).values()}
+
+
+def _parse_package_lock_entries(text: str) -> dict[str, ManifestEntry]:
+    """Direct dependencies from a package-lock.json (lockfileVersion
+    2/3 ``packages`` section).
+
+    Design (issue #2): the lockfile's own root entry (``packages[""]``)
+    records the project's direct dependencies — the same set
+    package.json declares. Only installed entries whose name is in
+    that direct set become audit entries: a lockfile-only change is
+    then audited for exactly the deps a human chose, and transitive
+    churn (the bulk of any lockfile regeneration) never manufactures
+    findings — blocking on a transitive dep nobody picked would break
+    the tool's precision invariant. Version bumps of a direct dep are
+    not adds (diff_manifests compares names), matching manifests.
+
+    lockfileVersion 1 (no ``packages`` section) is not read: it has no
+    reliable direct/transitive split, so the parser degrades to a
+    stderr note and no entries — never a crash, never a block.
+    """
+    data = json.loads(text)  # ValueError -> ManifestError upstream
+    out: dict[str, ManifestEntry] = {}
+    if not isinstance(data, dict):
+        return out
+    packages = data.get("packages")
+    if not isinstance(packages, dict):
+        print("note: package-lock.json has no 'packages' section "
+              "(lockfileVersion 1 is not read); lockfile skipped",
+              file=sys.stderr)
+        return out
+    root = packages.get("")
+    direct: dict[str, ManifestEntry] = {}
+    if isinstance(root, dict):
+        for section in _PKG_DEP_SECTIONS:
+            deps = root.get(section)
+            if isinstance(deps, dict):
+                for k, v in deps.items():
+                    if isinstance(k, str) and k:
+                        direct[k.lower()] = ManifestEntry(
+                            name=k, spec=str(v), section=section)
+    if not direct:
+        return out
+    for path, entry in packages.items():
+        if not isinstance(path, str) or "node_modules/" not in path:
+            continue
+        name = path.rsplit("node_modules/", 1)[1]
+        if not name or name.endswith("/"):
+            continue
+        if "/" in name and not (name.startswith("@")
+                                and name.count("/") == 1):
+            continue
+        key = name.lower()
+        if key in direct and key not in out:
+            version = entry.get("version") if isinstance(entry, dict) \
+                else None
+            base = direct[key]
+            out[key] = ManifestEntry(
+                name=base.name,
+                spec=str(version) if version else base.spec,
+                section=base.section)
+    return out
+
+
+def parse_package_lock(text: str) -> dict[str, str]:
+    return {e.name: e.spec
+            for e in _parse_package_lock_entries(text).values()}
 
 
 def _spec_str(value) -> str:
@@ -396,17 +509,24 @@ _ENTRY_PARSERS = {
     "package.json": _parse_package_json_entries,
     "requirements.txt": _parse_requirements_entries,
     "pyproject.toml": _parse_pyproject_entries,
+    "package-lock.json": _parse_package_lock_entries,
 }
 PARSERS = {
     "package.json": ("npm", parse_package_json),
     "requirements.txt": ("pypi", parse_requirements),
     "pyproject.toml": ("pypi", parse_pyproject),
+    "package-lock.json": ("npm", parse_package_lock),
 }
 ECOSYSTEMS = {fname: eco for fname, (eco, _p) in PARSERS.items()}
 
 
-def _entries_from_text(fname: str, text: str, where: str) -> dict[str, ManifestEntry]:
+def _entries_from_text(fname: str, text: str, where: str, resolver=None,
+                       origin: str = "") -> dict[str, ManifestEntry]:
     try:
+        if fname == "requirements.txt":
+            return _parse_requirements_entries(
+                text, resolver=resolver, _origin=origin,
+                _seen=frozenset({origin}) if origin else frozenset())
         return _ENTRY_PARSERS[fname](text)
     except ManifestError:
         raise
@@ -519,6 +639,15 @@ def load_manifests_from_dir(directory: str, collect_errors: bool = False) -> Man
         raise ManifestError(
             f"{len(relpaths)} manifests under {directory} exceeds the hard "
             f"cap of {MAX_MANIFESTS_HARD}; refusing a partial audit")
+    def include_resolver(target: str):
+        # requirements -r targets: same safe-read rules as manifests;
+        # any failure degrades to None (the parser warns, never crashes).
+        try:
+            return _read_manifest_file(
+                os.path.join(directory, target), directory)
+        except Exception:
+            return None
+
     for rel in relpaths:
         fname = os.path.basename(rel)
         path = os.path.join(directory, rel)
@@ -527,7 +656,11 @@ def load_manifests_from_dir(directory: str, collect_errors: bool = False) -> Man
                 text = _read_manifest_file(path, directory)
             except (OSError, UnicodeDecodeError) as e:
                 raise ManifestError(f"cannot read manifest {path}: {e}") from e
-            result[rel] = _entries_from_text(fname, text, path)
+            result[rel] = _entries_from_text(
+                fname, text, path,
+                resolver=include_resolver if fname == "requirements.txt"
+                else None,
+                origin=rel.replace(os.sep, "/"))
         except ManifestError as e:
             if not collect_errors:
                 raise
@@ -708,7 +841,11 @@ def parse_diff_file(text: str) -> list[AddedDep]:
         ecosystem = ECOSYSTEMS[fname]
 
         deps: list[AddedDep] = []
-        if fname == "package.json":
+        if fname == "package-lock.json":
+            # Lockfiles are read whole in the snapshot (dir/ref) modes;
+            # a single diff line carries no usable context here.
+            deps = []
+        elif fname == "package.json":
             deps, pj_section, pj_depth = _diff_package_json_line(
                 content, sign, pj_section, pj_depth)
         elif fname == "pyproject.toml":
@@ -903,6 +1040,25 @@ def _git_list_manifests(ref: str, cwd: str) -> tuple[list[str], list[str]]:
     return sorted(paths), sorted(links)
 
 
+def _git_show_include(ref: str, path: str, cwd: str) -> str | None:
+    """Read a requirements ``-r`` target at `ref`, or None when it is
+    absent, a symlink (never followed, like manifest symlinks), or
+    unreadable — include failures degrade to a parser warning."""
+    r = _git(["ls-tree", "-z", ref, "--", path], cwd)
+    if r.returncode != 0:
+        return None
+    entry = r.stdout.split("\0")[0]
+    if "\t" not in entry:
+        return None
+    mode = entry.split(" ", 1)[0]
+    if mode == "120000":
+        return None
+    try:
+        return _git_show(ref, path, cwd)
+    except ManifestError:
+        return None
+
+
 def load_manifests_from_ref(ref: str, cwd: str,
                             collect_errors: bool = False) -> ManifestMap:
     """Manifests at ANY depth at `ref`, paired by relative path.
@@ -924,11 +1080,18 @@ def load_manifests_from_ref(ref: str, cwd: str,
         raise ManifestError(
             f"{len(relpaths)} manifests at {ref} exceeds the hard cap of "
             f"{MAX_MANIFESTS_HARD}; refusing a partial audit")
+    def include_resolver(target: str):
+        return _git_show_include(ref, target, cwd)
+
     for rel in relpaths:
         fname = os.path.basename(rel)
         text = _git_show(ref, rel, cwd)
         try:
-            result[rel] = _entries_from_text(fname, text, f"{ref}:{rel}")
+            result[rel] = _entries_from_text(
+                fname, text, f"{ref}:{rel}",
+                resolver=include_resolver if fname == "requirements.txt"
+                else None,
+                origin=rel)
         except ManifestError as e:
             if not collect_errors:
                 raise

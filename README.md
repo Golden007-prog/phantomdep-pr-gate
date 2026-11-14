@@ -89,11 +89,28 @@ is reported as `unknown` — PhantomDep never guesses offline.
   between sections is not an addition). **`overrides` / pnpm `overrides`
   are out of scope** — they pin versions of transitive deps rather than
   adding direct deps, and are not parsed.
-- `requirements.txt`: plain requirement lines. `-r` includes are **not
-  followed** (a warning is printed); that file itself is audited.
+- `requirements.txt`: plain requirement lines. `-r` / `--requirement`
+  includes **are followed** in the directory and git-ref modes: the
+  included file's requirements count as declared by the including
+  file (resolved relative to the including file, recursively, with
+  cycle protection and a depth cap of 10). An include that is missing,
+  unreadable, a symlink (git mode), or points outside the audited tree
+  is not followed and prints a warning. In `--diff` file mode and the
+  plain text parser there is no tree to resolve against, so includes
+  there still print the "not followed" warning.
 - `pyproject.toml`: `project.dependencies`,
   `project.optional-dependencies`, PEP 735 `dependency-groups`, and
   `[tool.poetry.dependencies]` (+ poetry group/dev dependencies).
+- `package-lock.json` (lockfileVersion 2/3, directory and git-ref
+  modes): a dependency that enters through a lockfile-only change is
+  audited. Only the project's **direct** dependencies are read — the
+  set the lockfile's own root entry (`packages[""]`) records, the same
+  set `package.json` declares — so transitive churn from a regenerated
+  lockfile never manufactures findings. Verdicts and exit policy are
+  identical to manifest deps. lockfileVersion 1 has no reliable
+  direct/transitive split and is not read (a note is printed).
+  `--diff` file mode does not read lockfiles (a single diff line has
+  no usable lockfile context).
 
 **Monorepo recursion (v0.2):** in `--base-dir`/`--head-dir` and
 git-ref modes, manifests are discovered at **any depth** and paired
@@ -179,7 +196,7 @@ installed or executed.
 ## Tests
 
 ```bash
-python3 run_tests.py   # 108 tests, zero deps, zero network (FakeRegistry;
+python3 run_tests.py   # 120 tests, zero deps, zero network (FakeRegistry;
                        # LiveRegistry + pypistats parsing is tested with
                        # mocked urlopen against captured-shape payloads)
 ```
