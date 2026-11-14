@@ -1,5 +1,7 @@
 # PhantomDep PR Gate 👻
 
+[![Tests](https://github.com/RakTikoo/phantomdep-pr-gate/actions/workflows/tests.yml/badge.svg)](https://github.com/RakTikoo/phantomdep-pr-gate/actions/workflows/tests.yml)
+
 **One job: audit only the dependencies a pull request *adds*.**
 
 ![PhantomDep PR Gate terminal demo](phantomdep-pr-gate.gif)
@@ -153,9 +155,9 @@ downloads still blocks, exactly as before.
 ## GitHub Action
 
 Consumers pin a tagged release. Tags `v0.1` (at commit `eceb988`)
-and `v0.2` (at commit `97009c0`, the current release) both exist —
-see `RELEASE_NOTES.md` for the completed release record:
-`uses: RakTikoo/phantomdep-pr-gate@v0.2`.
+and `v0.2` (at commit `97009c0`) both exist — `v0.2.1` is the current
+release; see `RELEASE_NOTES.md` for the completed release record:
+`uses: RakTikoo/phantomdep-pr-gate@v0.2.1`.
 
 See `action.yml` and `examples/github-workflow.yml`: on `pull_request`,
 the action runs PhantomDep with `--base`/`--head` SHAs in `--live` mode
