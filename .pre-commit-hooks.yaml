@@ -1,0 +1,10 @@
+- id: phantomdep
+  name: PhantomDep PR Gate
+  description: >-
+    Audit the dependencies your pushed commits add (vs origin/main) for
+    phantom packages, typosquats, and newborn or barely-downloaded names.
+  entry: phantomdep --base origin/main --head HEAD --live
+  language: python
+  pass_filenames: false
+  stages: [pre-push]
+  files: (^|/)(package\.json|package-lock\.json|requirements[^/]*\.txt|pyproject\.toml)$
