@@ -2,7 +2,22 @@
 
 All notable changes to PhantomDep PR Gate, newest first. Versions are
 the GitHub tags/releases on this repo; consumers pin a version with
-`uses: RakTikoo/phantomdep-pr-gate@v0.2` (or `@v0.1`).
+`uses: RakTikoo/phantomdep-pr-gate@v0.3.0`.
+
+## Unreleased
+
+- **Packaging:** `pyproject.toml` added — `pip install
+  git+https://github.com/RakTikoo/phantomdep-pr-gate` (or `pipx
+  install …`) now installs the single module plus a `phantomdep`
+  console command; the version is read from `phantomdep.VERSION`, so
+  the package can never drift from the tool. Still stdlib only, zero
+  dependencies. The README gains a real install section covering the
+  Action, pip/pipx, and clone routes (it previously assumed the reader
+  already had the file).
+- **Pre-commit hook:** `.pre-commit-hooks.yaml` ships a `phantomdep`
+  hook that runs at the pre-push stage, auditing `origin/main` → `HEAD`
+  in `--live` mode when manifest files are in the pushed range.
+  Packaging, hooks and docs only — the detection code is unchanged.
 
 ## v0.3.0 — 2026-11-14
 
