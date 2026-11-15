@@ -4,7 +4,7 @@ All notable changes to PhantomDep PR Gate, newest first. Versions are
 the GitHub tags/releases on this repo; consumers pin a version with
 `uses: RakTikoo/phantomdep-pr-gate@v0.2` (or `@v0.1`).
 
-## Unreleased
+## v0.3.0 — 2026-11-14
 
 - **requirements.txt `-r` includes are followed** (issue #4) in the
   directory and git-ref modes: an included file's requirements count

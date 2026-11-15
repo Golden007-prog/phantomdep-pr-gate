@@ -172,9 +172,9 @@ downloads still blocks, exactly as before.
 ## GitHub Action
 
 Consumers pin a tagged release. Tags `v0.1` (at commit `eceb988`)
-and `v0.2` (at commit `97009c0`) both exist — `v0.2.1` is the current
+and `v0.2` (at commit `97009c0`) both exist — `v0.3.0` is the current
 release; see `RELEASE_NOTES.md` for the completed release record:
-`uses: RakTikoo/phantomdep-pr-gate@v0.2.1`.
+`uses: RakTikoo/phantomdep-pr-gate@v0.3.0`.
 
 See `action.yml` and `examples/github-workflow.yml`: on `pull_request`,
 the action runs PhantomDep with `--base`/`--head` SHAs in `--live` mode
