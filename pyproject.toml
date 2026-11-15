@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phantomdep-pr-gate"
+dynamic = ["version"]
+description = "Audit only the dependencies a pull request adds: phantom packages, typosquats, and newborn or barely-downloaded names on npm/PyPI. Stdlib-only CLI + GitHub Action."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "RakTikoo" }]
+keywords = [
+    "phantom-dependencies",
+    "slopsquatting",
+    "typosquatting",
+    "supply-chain-security",
+    "dependency-audit",
+    "github-action",
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: System :: Software Distribution",
+]
+dependencies = []
+
+[project.scripts]
+phantomdep = "phantomdep:main"
+
+[project.urls]
+Homepage = "https://github.com/RakTikoo/phantomdep-pr-gate"
+Repository = "https://github.com/RakTikoo/phantomdep-pr-gate"
+Issues = "https://github.com/RakTikoo/phantomdep-pr-gate/issues"
+
+[tool.setuptools]
+py-modules = ["phantomdep"]
+
+[tool.setuptools.dynamic]
+version = { attr = "phantomdep.VERSION" }
