@@ -63,7 +63,45 @@ The clean counterpart —
 and a green check; a later version-bump commit updated that same
 comment in place rather than posting a second one.
 
+## Install
+
+Three ways in — pick one:
+
+**GitHub Action (no install at all)** — the primary route; see
+[GitHub Action](#github-action) below:
+
+```yaml
+uses: RakTikoo/phantomdep-pr-gate@v0.3.0
+```
+
+**pip / pipx — the `phantomdep` command:**
+
+```bash
+pip install git+https://github.com/RakTikoo/phantomdep-pr-gate
+# or, isolated:
+pipx install git+https://github.com/RakTikoo/phantomdep-pr-gate
+
+phantomdep --base origin/main --head HEAD --live
+```
+
+Not on PyPI — the git URL is the package source. Stdlib only, so
+nothing else gets installed with it.
+
+**Clone — run the single file directly:**
+
+```bash
+git clone https://github.com/RakTikoo/phantomdep-pr-gate
+cd phantomdep-pr-gate
+python3 phantomdep.py --base origin/main --head HEAD --live
+```
+
+There is also a [pre-commit](#pre-commit-hook) hook.
+
 ## Quick start (offline-testable mode first)
+
+The examples below use `python3 phantomdep.py` from a clone; with the
+pip / pipx install, the same commands work as `phantomdep …` from
+anywhere.
 
 ```bash
 # Compare two manifest snapshots — no network unless --live is passed
@@ -182,6 +220,29 @@ and posts-or-updates a single PR comment (marker-matched, via
 `actions/github-script`). No token beyond the default `GITHUB_TOKEN`
 comment permission is needed, and no package from the PR is ever
 installed or executed.
+
+## Pre-commit hook
+
+PhantomDep also ships a [pre-commit](https://pre-commit.com) hook, for
+catching a phantom dependency before the PR exists. It runs at the
+**pre-push** stage — PhantomDep audits a diff between two refs, and a
+push is the first moment the full set of commits exists — comparing
+`origin/main` → `HEAD` in `--live` mode, whenever a manifest file is in
+the pushed range:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/RakTikoo/phantomdep-pr-gate
+    rev: v0.3.0  # the hook definition ships on main with the packaging
+                 # update and in the first tagged release after v0.3.0;
+                 # until then, pin the main-branch commit SHA
+    hooks:
+      - id: phantomdep
+```
+
+If your default branch is not `main`, override it via the hook's
+`args` (later flags win): `args: [--base, origin/develop]`.
 
 ## Safety
 
