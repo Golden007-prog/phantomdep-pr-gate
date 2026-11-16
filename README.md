@@ -4,6 +4,8 @@
 
 **One job: audit only the dependencies a pull request *adds*.**
 
+**First contribution?** Start with a [good first issue](https://github.com/RakTikoo/phantomdep-pr-gate/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+
 ![PhantomDep PR Gate terminal demo](phantomdep-pr-gate.gif)
 
 For each added dependency in `package.json`, `requirements.txt`, or
